@@ -44,4 +44,24 @@ export class CreateGuestDto {
   @Min(0)
   @Max(20)
   womenCount?: number;
+
+  @ApiPropertyOptional({ example: 2, minimum: 0, maximum: 20 })
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Max(20)
+  adults?: number;
+
+  @ApiPropertyOptional({ example: 1, minimum: 0, maximum: 20 })
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Max(20)
+  children?: number;
+
+  @ApiPropertyOptional({ example: 'Needs a baby chair', maxLength: 500 })
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  notes?: string;
 }

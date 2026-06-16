@@ -42,11 +42,27 @@ export class GuestsService {
       throw new NotFoundException('Event was not found');
     }
 
-    ensureGenderCountsFit(dto.maxAllowed ?? 2, dto.menCount ?? 0, dto.womenCount ?? 0);
+    const maxAllowed = dto.maxAllowed ?? 2;
+    const menCount = dto.menCount ?? 0;
+    const womenCount = dto.womenCount ?? 0;
+    const adults = dto.adults ?? 0;
+    const children = dto.children ?? 0;
+
+    if (adults + children > maxAllowed) {
+      throw new BadRequestException(`Guest count exceeds max allowed guests (${maxAllowed})`);
+    }
+
+    ensureGenderCountsFit(maxAllowed, menCount, womenCount);
 
     return this.guestModel.create({
       ...dto,
       eventId: new Types.ObjectId(eventId),
+      rsvpDetails: {
+        adults,
+        children,
+        notes: dto.notes,
+        updatedAt: new Date(),
+      },
     });
   }
 
