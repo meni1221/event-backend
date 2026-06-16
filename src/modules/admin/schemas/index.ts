@@ -20,6 +20,18 @@ export enum AdminAccountStatus {
   SUSPENDED = 'SUSPENDED',
 }
 
+@Schema({ _id: false })
+export class WhatsappSession {
+  @Prop({ required: true, trim: true })
+  sessionName!: string;
+
+  @Prop({ type: Buffer, required: true })
+  archive!: Buffer;
+
+  @Prop({ type: Date, required: true })
+  savedAt!: Date;
+}
+
 @Schema({ timestamps: true, collection: 'admins' })
 export class Admin {
   @Prop({ required: true, unique: true, trim: true, lowercase: true, index: true })
@@ -65,8 +77,8 @@ export class Admin {
   })
   accountStatus!: AdminAccountStatus;
 
-  @Prop({ type: Object, default: null })
-  whatsappSession!: Record<string, unknown> | null;
+  @Prop({ type: WhatsappSession, default: null })
+  whatsappSession!: WhatsappSession | null;
 
   @Prop({
     type: String,
@@ -86,5 +98,3 @@ export class Admin {
 }
 
 export const AdminSchema = SchemaFactory.createForClass(Admin);
-
-AdminSchema.index({ email: 1 }, { unique: true });

@@ -1,17 +1,11 @@
 import { promises as fs } from 'node:fs';
-import path from 'node:path';
+import * as path from 'node:path';
 import { Model } from 'mongoose';
-import { AdminDocument } from '../../admin/schemas';
+import { AdminDocument, WhatsappSession } from '../../admin/schemas';
 
 type RemoteAuthStorePayload = {
   session: string;
   path?: string;
-};
-
-type StoredWhatsappSession = {
-  sessionName: string;
-  archive: Buffer;
-  savedAt: Date;
 };
 
 export class AdminMongoRemoteAuthStore {
@@ -23,14 +17,15 @@ export class AdminMongoRemoteAuthStore {
   async sessionExists({ session }: RemoteAuthStorePayload): Promise<boolean> {
     const hostId = this.hostIdFromSession(session);
     const admin = await this.adminModel.findById(hostId).select('whatsappSession').lean().exec();
-    return Boolean(admin?.whatsappSession);
+    return Boolean(this.getArchiveBuffer(admin?.whatsappSession));
   }
 
   async save({ session }: RemoteAuthStorePayload): Promise<void> {
     const hostId = this.hostIdFromSession(session);
     const archivePath = this.archivePath(session);
+    await fs.mkdir(path.dirname(archivePath), { recursive: true });
     const archive = await fs.readFile(archivePath);
-    const whatsappSession: StoredWhatsappSession = {
+    const whatsappSession: WhatsappSession = {
       sessionName: session,
       archive,
       savedAt: new Date(),
@@ -39,16 +34,18 @@ export class AdminMongoRemoteAuthStore {
     await this.adminModel.findByIdAndUpdate(hostId, { whatsappSession }).exec();
   }
 
-  async extract({ session, path }: RemoteAuthStorePayload): Promise<void> {
+  async extract({ session, path: targetArchivePath }: RemoteAuthStorePayload): Promise<void> {
     const hostId = this.hostIdFromSession(session);
     const admin = await this.adminModel.findById(hostId).select('whatsappSession').lean().exec();
-    const stored = admin?.whatsappSession as StoredWhatsappSession | null | undefined;
+    const archive = this.getArchiveBuffer(admin?.whatsappSession);
 
-    if (!stored?.archive) {
+    if (!archive) {
       return;
     }
 
-    await fs.writeFile(path ?? this.archivePath(session), stored.archive);
+    const targetPath = targetArchivePath ?? this.archivePath(session);
+    await fs.mkdir(path.dirname(targetPath), { recursive: true });
+    await fs.writeFile(targetPath, archive);
   }
 
   async delete({ session }: RemoteAuthStorePayload): Promise<void> {
@@ -62,5 +59,23 @@ export class AdminMongoRemoteAuthStore {
 
   private hostIdFromSession(session: string) {
     return session.replace(/^RemoteAuth-/, '');
+  }
+
+  private getArchiveBuffer(session?: WhatsappSession | null) {
+    const archive = session?.archive as unknown;
+
+    if (!archive) {
+      return null;
+    }
+
+    if (Buffer.isBuffer(archive)) {
+      return archive.length ? archive : null;
+    }
+
+    if (archive instanceof Uint8Array) {
+      return archive.byteLength ? Buffer.from(archive) : null;
+    }
+
+    return null;
   }
 }

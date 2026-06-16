@@ -1,6 +1,6 @@
 import { BadRequestException, Inject, Injectable, Logger, NotFoundException, OnModuleDestroy, forwardRef } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import { Client, RemoteAuth } from 'whatsapp-web.js';
+import type { Client } from 'whatsapp-web.js';
 import { Model, Types } from 'mongoose';
 import * as QRCode from 'qrcode';
 import { Admin, AdminDocument, WhatsappStatus } from '../../admin/schemas';
@@ -46,7 +46,7 @@ export class WhatsappManagerService implements OnModuleDestroy {
       throw new NotFoundException('Host admin was not found');
     }
 
-    const managed = this.createManagedClient(hostId);
+    const managed = await this.createManagedClient(hostId);
     this.clients.set(hostId, managed);
     managed.initializing = this.initialize(hostId, managed);
 
@@ -105,6 +105,14 @@ export class WhatsappManagerService implements OnModuleDestroy {
   }
 
   private async getConnectedClient(hostId: string) {
+    const existing = this.clients.get(hostId);
+    if (!existing) {
+      const admin = await this.adminModel.findById(hostId).select('whatsappSession whatsappStatus').lean().exec();
+      if (!admin?.whatsappSession) {
+        throw new BadRequestException(`WhatsApp client is not connected. Current status: ${admin?.whatsappStatus ?? WhatsappStatus.DISCONNECTED}`);
+      }
+    }
+
     const snapshot = await this.ensureClient(hostId);
     const managed = this.clients.get(hostId);
 
@@ -127,7 +135,8 @@ export class WhatsappManagerService implements OnModuleDestroy {
     );
   }
 
-  private createManagedClient(hostId: string): ManagedWhatsappClient {
+  private async createManagedClient(hostId: string): Promise<ManagedWhatsappClient> {
+    const { Client, RemoteAuth } = await import('whatsapp-web.js');
     const client = new Client({
       authStrategy: new RemoteAuth({
         clientId: hostId,
@@ -136,7 +145,7 @@ export class WhatsappManagerService implements OnModuleDestroy {
       }),
       puppeteer: {
         headless: true,
-        args: ['--no-sandbox', '--disable-setuid-sandbox'],
+        args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage', '--disable-gpu', '--no-first-run'],
       },
     });
 
@@ -186,6 +195,7 @@ export class WhatsappManagerService implements OnModuleDestroy {
       this.logger.error(`WhatsApp auth failed for host ${hostId}: ${message}`);
       managed.status = WhatsappStatus.DISCONNECTED;
       managed.qrCode = null;
+      this.clients.delete(hostId);
       await this.adminModel
         .findByIdAndUpdate(hostId, {
           whatsappStatus: WhatsappStatus.DISCONNECTED,
@@ -202,6 +212,14 @@ export class WhatsappManagerService implements OnModuleDestroy {
     try {
       await managed.client.initialize();
       return this.snapshot(hostId, managed);
+    } catch (error) {
+      this.logger.error(`WhatsApp initialize failed for host ${hostId}: ${error instanceof Error ? error.message : String(error)}`);
+      managed.status = WhatsappStatus.DISCONNECTED;
+      managed.qrCode = null;
+      this.clients.delete(hostId);
+      await this.persistStatus(hostId, managed.status);
+      this.emit(hostId, managed);
+      throw error;
     } finally {
       managed.initializing = null;
     }
