@@ -32,6 +32,23 @@ export class WhatsappSession {
   savedAt!: Date;
 }
 
+@Schema({ _id: false })
+export class WhatsappConnection extends WhatsappSession {
+  @Prop({ required: true, trim: true })
+  connectionId!: string;
+
+  @Prop({ trim: true, default: '' })
+  displayName!: string;
+
+  @Prop({
+    type: String,
+    enum: Object.values(WhatsappStatus),
+    default: WhatsappStatus.DISCONNECTED,
+    index: true,
+  })
+  status!: WhatsappStatus;
+}
+
 @Schema({ timestamps: true, collection: 'admins' })
 export class Admin {
   @Prop({ required: true, unique: true, trim: true, lowercase: true, index: true })
@@ -79,6 +96,9 @@ export class Admin {
 
   @Prop({ type: WhatsappSession, default: null })
   whatsappSession!: WhatsappSession | null;
+
+  @Prop({ type: [WhatsappConnection], default: [] })
+  whatsappConnections!: WhatsappConnection[];
 
   @Prop({
     type: String,
