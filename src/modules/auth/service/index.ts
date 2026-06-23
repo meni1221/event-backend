@@ -157,6 +157,15 @@ export class AuthService {
     };
   }
 
+  isGoogleLoginState(state: string | undefined) {
+    if (!state) {
+      return false;
+    }
+
+    const payload = this.jwtService.decode(state) as Partial<GoogleLoginState> | null;
+    return payload?.purpose === 'google_login';
+  }
+
   async handleGoogleCallback(code: string | undefined, state: string | undefined, error?: string) {
     const frontendOrigin = this.config.get<string>('FRONTEND_ORIGIN') ?? 'http://localhost:4310';
 
@@ -406,7 +415,9 @@ export class AuthService {
   }
 
   private getGoogleLoginRedirectUri() {
-    return this.config.get<string>('GOOGLE_AUTH_REDIRECT_URI') ?? 'http://localhost:3000/api/auth/google/callback';
+    return this.config.get<string>('GOOGLE_AUTH_REDIRECT_URI')
+      ?? this.config.get<string>('GOOGLE_REDIRECT_URI')
+      ?? 'http://localhost:3000/api/auth/google/callback';
   }
 
   private getRequiredConfig(key: string) {

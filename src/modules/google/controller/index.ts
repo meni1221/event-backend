@@ -3,12 +3,16 @@ import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { StatusCodes } from 'http-status-codes';
 import { CurrentHost } from '../../../common/decorators/current-host';
 import { JwtAuthGuard } from '../../../common/guards/jwt-auth';
+import { AuthService } from '../../auth/service';
 import { GoogleService } from '../service';
 
 @ApiTags('Google')
 @Controller('google')
 export class GoogleController {
-  constructor(private readonly googleService: GoogleService) {}
+  constructor(
+    private readonly authService: AuthService,
+    private readonly googleService: GoogleService,
+  ) {}
 
   @Get('status')
   @UseGuards(JwtAuthGuard)
@@ -41,7 +45,12 @@ export class GoogleController {
 
   @Get('callback')
   @Redirect()
-  async callback(@Query('code') code?: string, @Query('state') state?: string) {
+  async callback(@Query('code') code?: string, @Query('state') state?: string, @Query('error') error?: string) {
+    if (this.authService.isGoogleLoginState(state)) {
+      const url = await this.authService.handleGoogleCallback(code, state, error);
+      return { url };
+    }
+
     const redirectUrl = await this.googleService.handleCallback(code, state);
     return { url: `${redirectUrl}?google=connected` };
   }

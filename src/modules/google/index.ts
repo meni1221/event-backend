@@ -3,11 +3,13 @@ import { JwtModule } from '@nestjs/jwt';
 import { MongooseModule } from '@nestjs/mongoose';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth';
 import { Admin, AdminSchema } from '../admin/schemas';
+import { AuthModule } from '../auth';
 import { GoogleController } from './controller';
 import { GoogleService } from './service';
 
 @Module({
   imports: [
+    AuthModule,
     JwtModule,
     MongooseModule.forFeature([{ name: Admin.name, schema: AdminSchema }]),
   ],
