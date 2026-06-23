@@ -7,6 +7,8 @@ export type GoogleTokenResponse = {
 
 export type GoogleUserInfoResponse = {
   email?: string;
+  email_verified?: boolean;
+  name?: string;
 };
 
 export type GooglePeopleResponse = {

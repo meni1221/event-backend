@@ -1,7 +1,7 @@
-import { Body, Controller, HttpCode, Post } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, Post, Query, Redirect } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import { StatusCodes } from 'http-status-codes';
-import { ForgotPasswordDto, LoginDto, RegisterDto, ResetPasswordDto } from '../dto';
+import { ForgotPasswordDto, GoogleAuthCallbackDto, LoginDto, RegisterDto, ResetPasswordDto } from '../dto';
 import { AuthService } from '../service';
 
 @ApiTags('Auth')
@@ -31,5 +31,18 @@ export class AuthController {
   @HttpCode(StatusCodes.OK)
   resetPassword(@Body() dto: ResetPasswordDto) {
     return this.authService.resetPassword(dto);
+  }
+
+  @Get('google')
+  @HttpCode(StatusCodes.OK)
+  googleAuthUrl() {
+    return this.authService.createGoogleAuthUrl();
+  }
+
+  @Get('google/callback')
+  @Redirect()
+  async googleCallback(@Query() query: GoogleAuthCallbackDto) {
+    const url = await this.authService.handleGoogleCallback(query.code, query.state, query.error);
+    return { url };
   }
 }

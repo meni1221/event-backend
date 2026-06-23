@@ -10,9 +10,15 @@ import { Admin, AdminAccountStatus, AdminDocument, AdminRole } from '../../admin
 import { AppLoggerService } from '../../logs/service';
 import { LogLevel, LogSource } from '../../logs/schemas';
 import { MailService } from '../../mail/service';
+import { GoogleTokenResponse, GoogleUserInfoResponse } from '../../google/types';
 import { ForgotPasswordDto, LoginDto, RegisterDto, ResetPasswordDto } from '../dto';
 import { hashResetToken, isDuplicateMongoKeyError, normalizeEmail } from '../helpers';
 import { toAuthSession } from '../mappers';
+
+type GoogleLoginState = {
+  nonce: string;
+  purpose: 'google_login';
+};
 
 @Injectable()
 export class AuthService {
@@ -131,6 +137,60 @@ export class AuthService {
     return this.createSession(admin.id, admin.email, expectedRole, admin);
   }
 
+  createGoogleAuthUrl() {
+    const params = new URLSearchParams({
+      client_id: this.getRequiredConfig('GOOGLE_CLIENT_ID'),
+      redirect_uri: this.getGoogleLoginRedirectUri(),
+      response_type: 'code',
+      scope: ['openid', 'email', 'profile'].join(' '),
+      state: this.jwtService.sign(
+        {
+          nonce: randomBytes(16).toString('hex'),
+          purpose: 'google_login',
+        } satisfies GoogleLoginState,
+        { expiresIn: '10m' },
+      ),
+    });
+
+    return {
+      authUrl: `https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`,
+    };
+  }
+
+  async handleGoogleCallback(code: string | undefined, state: string | undefined, error?: string) {
+    const frontendOrigin = this.config.get<string>('FRONTEND_ORIGIN') ?? 'http://localhost:4310';
+
+    try {
+      if (error) {
+        throw new BadRequestException(`Google rejected the sign-in request: ${error}`);
+      }
+
+      if (!code || !state) {
+        throw new BadRequestException('Missing Google OAuth code or state');
+      }
+
+      await this.verifyGoogleLoginState(state);
+      const tokenResponse = await this.exchangeGoogleLoginCode(code);
+      if (!tokenResponse.access_token) {
+        throw new BadRequestException('Google did not return an access token');
+      }
+
+      const googleUser = await this.getGoogleUserInfo(tokenResponse.access_token);
+      const normalizedEmail = normalizeEmail(googleUser.email ?? '');
+      if (!normalizedEmail || googleUser.email_verified === false) {
+        throw new BadRequestException('Google account email is missing or not verified');
+      }
+
+      const result = await this.loginOrCreateGoogleAdmin(normalizedEmail, googleUser.name);
+      const payload = this.encodeGoogleAuthPayload(result);
+      return `${frontendOrigin}/auth/google/callback#${payload}`;
+    } catch (cause) {
+      const message = cause instanceof Error ? cause.message : 'Google sign-in failed';
+      const params = new URLSearchParams({ error: message });
+      return `${frontendOrigin}/auth/google/callback?${params.toString()}`;
+    }
+  }
+
   async forgotPassword(dto: ForgotPasswordDto) {
     const admin = await this.adminModel.findOne({ email: normalizeEmail(dto.email) }).select('_id email').exec();
 
@@ -208,6 +268,7 @@ export class AuthService {
   private async createAdminAccount(payload: {
     accountStatus: AdminAccountStatus;
     email: string;
+    fullName?: string;
     passwordHash: string;
     role: AdminRole;
   }) {
@@ -220,5 +281,146 @@ export class AuthService {
 
       throw cause;
     }
+  }
+
+  private async loginOrCreateGoogleAdmin(email: string, fullName?: string) {
+    const existingAdmin = await this.adminModel
+      .findOne({ email })
+      .select('email fullName phoneNumber profileCompleted onboardingCompleted onboardingSkipped role accountStatus')
+      .exec();
+
+    if (existingAdmin) {
+      const expectedRole = isOwnerEmail(this.config, existingAdmin.email) ? AdminRole.OWNER : existingAdmin.role;
+      const expectedStatus = expectedRole === AdminRole.OWNER ? AdminAccountStatus.APPROVED : existingAdmin.accountStatus;
+      if (existingAdmin.role !== expectedRole || existingAdmin.accountStatus !== expectedStatus) {
+        await this.adminModel.findByIdAndUpdate(existingAdmin.id, { role: expectedRole, accountStatus: expectedStatus }).exec();
+      }
+
+      if (expectedStatus !== AdminAccountStatus.APPROVED) {
+        void this.logger.write({
+          category: 'auth.google.blocked',
+          hostId: existingAdmin.id,
+          level: LogLevel.WARN,
+          message: 'Google login blocked because account is not approved',
+          source: LogSource.BACKEND,
+          userEmail: existingAdmin.email,
+        });
+        return { pendingApproval: true, email: existingAdmin.email };
+      }
+
+      void this.logger.write({
+        category: 'auth.google.login.success',
+        hostId: existingAdmin.id,
+        level: LogLevel.INFO,
+        message: 'Admin authenticated with Google',
+        source: LogSource.BACKEND,
+        userEmail: existingAdmin.email,
+      });
+
+      return this.createSession(existingAdmin.id, existingAdmin.email, expectedRole, existingAdmin);
+    }
+
+    const role = isOwnerEmail(this.config, email) ? AdminRole.OWNER : AdminRole.HOST;
+    const accountStatus = role === AdminRole.OWNER ? AdminAccountStatus.APPROVED : AdminAccountStatus.PENDING_APPROVAL;
+    const admin = await this.createAdminAccount({
+      accountStatus,
+      email,
+      fullName: fullName?.trim(),
+      passwordHash: await bcrypt.hash(randomBytes(32).toString('hex'), 12),
+      role,
+    });
+
+    void this.logger.write({
+      category: accountStatus === AdminAccountStatus.APPROVED ? 'auth.google.register.owner' : 'auth.google.register.pending_approval',
+      hostId: admin.id,
+      level: LogLevel.INFO,
+      message: accountStatus === AdminAccountStatus.APPROVED ? 'Owner account registered with Google' : 'Host registered with Google and is pending approval',
+      source: LogSource.BACKEND,
+      userEmail: admin.email,
+    });
+
+    if (accountStatus !== AdminAccountStatus.APPROVED) {
+      try {
+        await this.mailService.sendAdminApprovalRequest(admin.email);
+      } catch (cause) {
+        void this.logger.write({
+          category: 'auth.google.approval_email_failed',
+          hostId: admin.id,
+          level: LogLevel.WARN,
+          message: 'Failed to send Google admin approval request email',
+          meta: { cause: cause instanceof Error ? cause.message : 'unknown' },
+          source: LogSource.BACKEND,
+          userEmail: admin.email,
+        });
+      }
+
+      return { pendingApproval: true, email: admin.email };
+    }
+
+    return this.createSession(admin.id, admin.email, admin.role, admin);
+  }
+
+  private async exchangeGoogleLoginCode(code: string): Promise<GoogleTokenResponse> {
+    const body = new URLSearchParams({
+      code,
+      client_id: this.getRequiredConfig('GOOGLE_CLIENT_ID'),
+      client_secret: this.getRequiredConfig('GOOGLE_CLIENT_SECRET'),
+      redirect_uri: this.getGoogleLoginRedirectUri(),
+      grant_type: 'authorization_code',
+    });
+
+    const response = await fetch('https://oauth2.googleapis.com/token', {
+      method: 'POST',
+      headers: { 'content-type': 'application/x-www-form-urlencoded' },
+      body,
+    });
+
+    if (!response.ok) {
+      throw new BadRequestException(await response.text());
+    }
+
+    return response.json() as Promise<GoogleTokenResponse>;
+  }
+
+  private async getGoogleUserInfo(accessToken: string) {
+    const response = await fetch('https://openidconnect.googleapis.com/v1/userinfo', {
+      headers: { authorization: `Bearer ${accessToken}` },
+    });
+
+    if (!response.ok) {
+      throw new BadRequestException(await response.text());
+    }
+
+    return response.json() as Promise<GoogleUserInfoResponse>;
+  }
+
+  private async verifyGoogleLoginState(state: string) {
+    try {
+      const payload = await this.jwtService.verifyAsync<GoogleLoginState>(state, { algorithms: ['HS256'] });
+      if (payload.purpose !== 'google_login' || !payload.nonce) {
+        throw new Error('Invalid Google login state payload');
+      }
+    } catch {
+      throw new BadRequestException('Invalid or expired Google login state');
+    }
+  }
+
+  private getGoogleLoginRedirectUri() {
+    return this.config.get<string>('GOOGLE_AUTH_REDIRECT_URI') ?? 'http://localhost:3000/api/auth/google/callback';
+  }
+
+  private getRequiredConfig(key: string) {
+    const value = this.config.get<string>(key);
+    if (!value) {
+      throw new BadRequestException(`${key} is not configured`);
+    }
+
+    return value;
+  }
+
+  private encodeGoogleAuthPayload(payload: unknown) {
+    return new URLSearchParams({
+      payload: Buffer.from(JSON.stringify(payload), 'utf8').toString('base64url'),
+    }).toString();
   }
 }
