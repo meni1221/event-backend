@@ -90,6 +90,14 @@ The frontend should point to this backend with:
 VITE_API_BASE_URL=https://your-backend.example.com/api
 ```
 
+## Session Security
+
+- Protected HTTP routes are authenticated by default. Only routes marked with `@Public()` bypass session validation.
+- Every protected request verifies the account status, current role, and session version against MongoDB.
+- Password changes and password resets increment the session version and revoke previously issued tokens.
+- Tokens issued before session versioning was introduced are intentionally rejected. Users must sign in again after the first deployment of this version.
+- WebSocket connections use the same database-backed session authorization as REST requests.
+
 ## WhatsApp QR API
 
 ```http

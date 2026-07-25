@@ -1,7 +1,6 @@
-import { Body, Controller, ForbiddenException, Get, Post, Query, UseGuards } from '@nestjs/common';
+import { Body, Controller, ForbiddenException, Get, Post, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { CurrentHost } from '../../../common/decorators/current-host';
-import { JwtAuthGuard } from '../../../common/guards/jwt-auth';
 import { CreateFrontendLogDto, LogQueryDto } from '../dto';
 import { AdminRole } from '../../admin/schemas';
 import { AppLoggerService } from '../service';
@@ -9,7 +8,6 @@ import { AppLoggerService } from '../service';
 @ApiTags('Logs')
 @ApiBearerAuth('access-token')
 @Controller('logs')
-@UseGuards(JwtAuthGuard)
 export class LogsController {
   constructor(private readonly logger: AppLoggerService) {}
 

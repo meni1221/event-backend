@@ -1,4 +1,4 @@
-import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectModel } from '@nestjs/mongoose';
 import * as bcrypt from 'bcryptjs';
@@ -72,8 +72,6 @@ export class AdminService {
       throw new NotFoundException('Admin was not found');
     }
 
-    await this.ensureOwnerRole(admin);
-
     void this.logger.write({
       category: 'admin.profile.updated',
       hostId,
@@ -83,16 +81,22 @@ export class AdminService {
       userEmail: admin.email,
     });
 
-    return toAdminProfile({
-      ...admin,
-      ...(isOwnerEmail(this.config, admin.email) ? { accountStatus: AdminAccountStatus.APPROVED, role: AdminRole.OWNER } : {}),
-    });
+    return toAdminProfile(admin);
   }
 
   async updateCurrentProfile(hostId: string, dto: UpdateAdminProfileDto) {
     const hostObjectId = toObjectId(hostId, 'host id');
 
     const normalizedEmail = dto.email.trim().toLowerCase();
+    const currentAdmin = await this.adminModel.findById(hostObjectId).select('role').lean<{ role: AdminRole }>().exec();
+    if (!currentAdmin) {
+      throw new NotFoundException('Admin was not found');
+    }
+
+    if (currentAdmin.role !== AdminRole.OWNER && isOwnerEmail(this.config, normalizedEmail)) {
+      throw new ForbiddenException('This email address is reserved for an owner account');
+    }
+
     const existingAdmin = await this.adminModel
       .findOne({ email: normalizedEmail, _id: { $ne: hostObjectId } })
       .select('_id')
@@ -165,7 +169,7 @@ export class AdminService {
   async changeCurrentPassword(hostId: string, dto: ChangePasswordDto) {
     toObjectId(hostId, 'host id');
 
-    const admin = await this.adminModel.findById(hostId).select('+passwordHash email').exec();
+    const admin = await this.adminModel.findById(hostId).select('+passwordHash +sessionVersion email').exec();
     const isCurrentPasswordValid = admin ? await bcrypt.compare(dto.currentPassword, admin.passwordHash) : false;
 
     if (!admin || !isCurrentPasswordValid) {
@@ -173,6 +177,7 @@ export class AdminService {
     }
 
     admin.passwordHash = await bcrypt.hash(dto.newPassword, 12);
+    admin.sessionVersion = (admin.sessionVersion ?? 0) + 1;
     await admin.save();
 
     void this.logger.write({
@@ -253,18 +258,4 @@ export class AdminService {
     return toApprovedOwnerUser(admin);
   }
 
-  private async ensureOwnerRole(admin: AdminOverviewRecord) {
-    if (!isOwnerEmail(this.config, admin.email)) {
-      return;
-    }
-
-    if (admin.role === AdminRole.OWNER && admin.accountStatus === AdminAccountStatus.APPROVED) {
-      return;
-    }
-
-    await this.adminModel.findByIdAndUpdate(admin._id, {
-      accountStatus: AdminAccountStatus.APPROVED,
-      role: AdminRole.OWNER,
-    }).exec();
-  }
 }

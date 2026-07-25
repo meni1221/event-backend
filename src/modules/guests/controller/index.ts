@@ -1,9 +1,9 @@
-import { Body, Controller, Delete, Get, HttpCode, Param, Patch, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, HttpCode, Param, Patch, Post } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { StatusCodes } from 'http-status-codes';
 import { Throttle } from '@nestjs/throttler';
 import { CurrentHost } from '../../../common/decorators/current-host';
-import { JwtAuthGuard } from '../../../common/guards/jwt-auth';
+import { Public } from '../../../common/decorators/public';
 import { routeRateLimits } from '../../../common/security';
 import { CreateGuestDto } from '../dto/create-guest';
 import { UpdateGuestDto } from '../dto/update-guest';
@@ -16,7 +16,6 @@ export class GuestsController {
   constructor(private readonly guestsService: GuestsService) {}
 
   @Get()
-  @UseGuards(JwtAuthGuard)
   @ApiBearerAuth('access-token')
   findHostGuests(@CurrentHost() host: { hostId: string }) {
     return this.guestsService.findByHost(host.hostId);
@@ -24,7 +23,6 @@ export class GuestsController {
 
   @Post('event/:eventId')
   @HttpCode(StatusCodes.CREATED)
-  @UseGuards(JwtAuthGuard)
   @ApiBearerAuth('access-token')
   createGuest(
     @CurrentHost() host: { hostId: string },
@@ -36,7 +34,6 @@ export class GuestsController {
 
   @Delete(':guestId')
   @HttpCode(StatusCodes.OK)
-  @UseGuards(JwtAuthGuard)
   @ApiBearerAuth('access-token')
   removeGuest(@CurrentHost() host: { hostId: string }, @Param('guestId') guestId: string) {
     return this.guestsService.remove(host.hostId, guestId);
@@ -44,7 +41,6 @@ export class GuestsController {
 
   @Patch(':guestId')
   @HttpCode(StatusCodes.OK)
-  @UseGuards(JwtAuthGuard)
   @ApiBearerAuth('access-token')
   updateGuest(
     @CurrentHost() host: { hostId: string },
@@ -55,6 +51,7 @@ export class GuestsController {
   }
 
   @Get('invite/:eventId/:inviteId')
+  @Public()
   @Throttle(routeRateLimits.invitations.read)
   findPublicInviteByEvent(
     @Param('eventId') eventId: string,
@@ -64,12 +61,14 @@ export class GuestsController {
   }
 
   @Get('invite/:inviteId')
+  @Public()
   @Throttle(routeRateLimits.invitations.read)
   findPublicInvite(@Param('inviteId') inviteId: string) {
     return this.guestsService.findByInviteId(inviteId);
   }
 
   @Patch('invite/:eventId/:inviteId/rsvp')
+  @Public()
   @Throttle(routeRateLimits.invitations.rsvp)
   @HttpCode(StatusCodes.OK)
   updatePublicEventRsvp(
@@ -81,6 +80,7 @@ export class GuestsController {
   }
 
   @Patch('invite/:inviteId/rsvp')
+  @Public()
   @Throttle(routeRateLimits.invitations.rsvp)
   @HttpCode(StatusCodes.OK)
   updatePublicRsvp(@Param('inviteId') inviteId: string, @Body() dto: UpdateRsvpDto) {

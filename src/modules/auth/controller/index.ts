@@ -2,12 +2,14 @@ import { Body, Controller, Get, HttpCode, Post, Query, Redirect } from '@nestjs/
 import { ApiTags } from '@nestjs/swagger';
 import { StatusCodes } from 'http-status-codes';
 import { Throttle } from '@nestjs/throttler';
+import { Public } from '../../../common/decorators/public';
 import { routeRateLimits } from '../../../common/security';
 import { ForgotPasswordDto, GoogleAuthCallbackDto, LoginDto, RegisterDto, ResetPasswordDto } from '../dto';
 import { AuthService } from '../service';
 
 @ApiTags('Auth')
 @Controller('auth')
+@Public()
 export class AuthController {
   constructor(private readonly authService: AuthService) {}
 

@@ -38,27 +38,19 @@ export class AuthService {
       throw new ConflictException('Email is already used by another admin');
     }
 
+    if (isOwnerEmail(this.config, normalizedEmail)) {
+      throw new ForbiddenException('Owner accounts must be created with verified Google sign-in');
+    }
+
     const passwordHash = await bcrypt.hash(dto.password, 12);
-    const role = isOwnerEmail(this.config, normalizedEmail) ? AdminRole.OWNER : AdminRole.HOST;
-    const accountStatus = role === AdminRole.OWNER ? AdminAccountStatus.APPROVED : AdminAccountStatus.PENDING_APPROVAL;
+    const role = AdminRole.HOST;
+    const accountStatus = AdminAccountStatus.PENDING_APPROVAL;
     const admin = await this.createAdminAccount({
       accountStatus,
       email: normalizedEmail,
       passwordHash,
       role,
     });
-
-    if (role === AdminRole.OWNER) {
-      void this.logger.write({
-        category: 'auth.register.owner',
-        hostId: admin.id,
-        level: LogLevel.INFO,
-        message: 'Super admin account registered',
-        source: LogSource.BACKEND,
-        userEmail: admin.email,
-      });
-      return this.createSession(admin.id, admin.email, admin.role, admin);
-    }
 
     try {
       await this.mailService.sendAdminApprovalRequest(admin.email);
@@ -92,7 +84,7 @@ export class AuthService {
     const normalizedEmail = normalizeEmail(dto.email);
     const admin = await this.adminModel
       .findOne({ email: normalizedEmail })
-      .select('+passwordHash email fullName phoneNumber profileCompleted onboardingCompleted onboardingSkipped role accountStatus')
+      .select('+passwordHash +sessionVersion email fullName phoneNumber profileCompleted onboardingCompleted onboardingSkipped role accountStatus')
       .exec();
     const isValid = admin ? await bcrypt.compare(dto.password, admin.passwordHash) : false;
 
@@ -107,13 +99,7 @@ export class AuthService {
       throw new UnauthorizedException('Invalid email or password');
     }
 
-    const expectedRole = isOwnerEmail(this.config, admin.email) ? AdminRole.OWNER : admin.role;
-    const expectedStatus = expectedRole === AdminRole.OWNER ? AdminAccountStatus.APPROVED : admin.accountStatus;
-    if (admin.role !== expectedRole || admin.accountStatus !== expectedStatus) {
-      await this.adminModel.findByIdAndUpdate(admin.id, { role: expectedRole, accountStatus: expectedStatus }).exec();
-    }
-
-    if (expectedStatus !== AdminAccountStatus.APPROVED) {
+    if (admin.accountStatus !== AdminAccountStatus.APPROVED) {
       void this.logger.write({
         category: 'auth.login.blocked',
         hostId: admin.id,
@@ -134,7 +120,7 @@ export class AuthService {
       userEmail: admin.email,
     });
 
-    return this.createSession(admin.id, admin.email, expectedRole, admin);
+    return this.createSession(admin.id, admin.email, admin.role, admin);
   }
 
   createGoogleAuthUrl() {
@@ -235,7 +221,7 @@ export class AuthService {
         passwordResetExpiresAt: { $gt: new Date() },
         passwordResetTokenHash: tokenHash,
       })
-      .select('+passwordHash +passwordResetTokenHash +passwordResetExpiresAt email role accountStatus fullName phoneNumber profileCompleted onboardingCompleted onboardingSkipped')
+      .select('+passwordHash +passwordResetTokenHash +passwordResetExpiresAt +sessionVersion email role accountStatus fullName phoneNumber profileCompleted onboardingCompleted onboardingSkipped')
       .exec();
 
     if (!admin) {
@@ -245,6 +231,7 @@ export class AuthService {
     admin.passwordHash = await bcrypt.hash(dto.password, 12);
     admin.passwordResetTokenHash = null;
     admin.passwordResetExpiresAt = null;
+    admin.sessionVersion = (admin.sessionVersion ?? 0) + 1;
     await admin.save();
 
     void this.logger.write({
@@ -259,9 +246,9 @@ export class AuthService {
     return this.createSession(admin.id, admin.email, admin.role, admin);
   }
 
-  private createSession(hostId: string, email: string, role: AdminRole, profile?: { fullName?: string; phoneNumber?: string; profileCompleted?: boolean; onboardingCompleted?: boolean; onboardingSkipped?: boolean }) {
+  private createSession(hostId: string, email: string, role: AdminRole, profile?: { fullName?: string; phoneNumber?: string; profileCompleted?: boolean; onboardingCompleted?: boolean; onboardingSkipped?: boolean; sessionVersion?: number }) {
     return toAuthSession({
-      accessToken: this.jwtService.sign({ sub: hostId, email, role }),
+      accessToken: this.jwtService.sign({ sub: hostId, sessionVersion: profile?.sessionVersion ?? 0 }),
       email,
       hostId,
       profile,
@@ -290,7 +277,7 @@ export class AuthService {
   private async loginOrCreateGoogleAdmin(email: string, fullName?: string) {
     const existingAdmin = await this.adminModel
       .findOne({ email })
-      .select('email fullName phoneNumber profileCompleted onboardingCompleted onboardingSkipped role accountStatus')
+      .select('+sessionVersion email fullName phoneNumber profileCompleted onboardingCompleted onboardingSkipped role accountStatus')
       .exec();
 
     if (existingAdmin) {

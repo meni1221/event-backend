@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { APP_GUARD } from '@nestjs/core';
 import { JwtModule } from '@nestjs/jwt';
 import { MongooseModule } from '@nestjs/mongoose';
 import { getRequiredJwtSecret } from '../../common/config';
@@ -7,6 +8,8 @@ import { Admin, AdminSchema } from '../admin/schemas';
 import { MailModule } from '../mail';
 import { AuthController } from './controller';
 import { AuthService } from './service';
+import { JwtAuthGuard } from '../../common/guards/jwt-auth';
+import { SessionAuthorizationService } from './session-authorization';
 
 @Module({
   imports: [
@@ -21,7 +24,12 @@ import { AuthService } from './service';
     }),
   ],
   controllers: [AuthController],
-  providers: [AuthService],
-  exports: [AuthService],
+  providers: [
+    AuthService,
+    JwtAuthGuard,
+    SessionAuthorizationService,
+    { provide: APP_GUARD, useExisting: JwtAuthGuard },
+  ],
+  exports: [AuthService, SessionAuthorizationService],
 })
 export class AuthModule {}
