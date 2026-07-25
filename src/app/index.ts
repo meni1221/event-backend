@@ -11,6 +11,7 @@ import { EventsModule } from '../modules/events';
 import { GuestsModule } from '../modules/guests';
 import { GoogleModule } from '../modules/google';
 import { LogsModule } from '../modules/logs';
+import { HealthModule } from '../modules/health';
 import { WhatsappModule } from '../modules/whatsapp';
 
 @Module({
@@ -37,6 +38,7 @@ import { WhatsappModule } from '../modules/whatsapp';
     EventsModule,
     GuestsModule,
     GoogleModule,
+    HealthModule,
     WhatsappModule,
   ],
   providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],
