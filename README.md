@@ -15,7 +15,7 @@ NestJS API for the Ishru multi-tenant event platform.
 
 ## Requirements
 
-- Node.js 20+
+- Node.js 24.16+
 - MongoDB
 - SMTP credentials for real email delivery
 
@@ -33,11 +33,12 @@ Important values:
 PORT=3000
 MONGODB_URI=mongodb://127.0.0.1:27017/ishru
 FRONTEND_ORIGIN=http://localhost:4310
-JWT_SECRET=change-this-secret
+JWT_SECRET=local-development-secret-at-least-32-characters
 OWNER_EMAILS=owner@example.com,second-owner@example.com
 GOOGLE_CLIENT_ID=
 GOOGLE_CLIENT_SECRET=
 GOOGLE_REDIRECT_URI=http://localhost:3000/api/google/callback
+GOOGLE_AUTH_REDIRECT_URI=http://localhost:3000/api/auth/google/callback
 SMTP_HOST=
 SMTP_PORT=587
 SMTP_USER=
@@ -49,6 +50,26 @@ LOG_TO_DB=true
 ```
 
 `OWNER_EMAILS` controls which users become super admins and who receives admin approval request emails.
+
+Google uses two separate OAuth callbacks:
+
+- `GOOGLE_AUTH_REDIRECT_URI` handles application sign-in.
+- `GOOGLE_REDIRECT_URI` handles Google Contacts access for an authenticated host.
+
+## Production Configuration
+
+The server validates its environment before connecting to MongoDB or accepting traffic. Production startup fails with a list of configuration keys to fix when a required integration is missing or malformed.
+
+Before setting `NODE_ENV=production`:
+
+- Generate a unique `JWT_SECRET` containing at least 32 characters.
+- Set an HTTPS `FRONTEND_ORIGIN`. Multiple origins may be comma-separated.
+- Configure MongoDB, Google OAuth, owner emails, and SMTP credentials.
+- Use HTTPS for both Google redirect URIs and `MAIL_LOGO_URL`.
+- Register the exact Google redirect URIs in Google Cloud Console.
+- Keep real secrets in the deployment platform environment, never in `.env.example` or Git.
+
+After a Google client secret is exposed, revoke it in Google Cloud Console and deploy a newly generated secret.
 
 ## Development
 
