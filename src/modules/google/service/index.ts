@@ -3,12 +3,13 @@ import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import { InjectModel } from '@nestjs/mongoose';
 import { randomUUID } from 'crypto';
+import { OAuth2Client } from 'google-auth-library';
 import { Model } from 'mongoose';
 import { getRequiredJwtSecret } from '../../../common/config';
 import { Admin, AdminDocument } from '../../admin/schemas';
 import { googleScopes } from '../constants';
 import { mapGooglePeopleToContacts } from '../mappers';
-import { GoogleOAuthState, GooglePeopleResponse, GoogleTokenResponse, GoogleUserInfoResponse } from '../types';
+import { GoogleOAuthState, GooglePeopleResponse, GoogleUserInfoResponse } from '../types';
 
 @Injectable()
 export class GoogleService {
@@ -32,20 +33,13 @@ export class GoogleService {
   }
 
   createAuthUrl(hostId: string) {
-    const clientId = this.getRequiredConfig('GOOGLE_CLIENT_ID');
-    const redirectUri = this.getRedirectUri();
-    const params = new URLSearchParams({
-      client_id: clientId,
-      redirect_uri: redirectUri,
-      response_type: 'code',
+    return {
+      authUrl: this.getOAuthClient().generateAuthUrl({
       access_type: 'offline',
       prompt: 'consent',
       scope: googleScopes.join(' '),
       state: this.createSignedState(hostId),
-    });
-
-    return {
-      authUrl: `https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`,
+      }),
     };
   }
 
@@ -54,13 +48,19 @@ export class GoogleService {
       throw new BadRequestException('Missing Google OAuth code or state');
     }
 
-    const tokenResponse = await this.exchangeCode(code);
-    if (!tokenResponse.refresh_token) {
+    const oauthClient = this.getOAuthClient();
+    const { tokens } = await oauthClient.getToken(code);
+    if (!tokens.refresh_token) {
       throw new BadRequestException('Google did not return a refresh token. Disconnect and approve consent again.');
     }
 
-    const googleAccountEmail = tokenResponse.access_token
-      ? await this.getGoogleAccountEmail(tokenResponse.access_token)
+    const googleAccountEmail = tokens.id_token
+      ? (await oauthClient.verifyIdToken({
+          idToken: tokens.id_token,
+          audience: this.getRequiredConfig('GOOGLE_CLIENT_ID'),
+        })).getPayload()?.email
+      : tokens.access_token
+      ? await this.getGoogleAccountEmail(tokens.access_token)
       : undefined;
 
     const oauthState = await this.verifySignedState(state);
@@ -69,8 +69,8 @@ export class GoogleService {
       .findByIdAndUpdate(oauthState.hostId, {
         googleConnection: {
           googleAccountEmail,
-          refreshToken: tokenResponse.refresh_token,
-          scopes: tokenResponse.scope?.split(' ') ?? googleScopes,
+          refreshToken: tokens.refresh_token,
+          scopes: tokens.scope?.split(' ') ?? googleScopes,
           connectedAt: new Date(),
         },
       })
@@ -107,28 +107,6 @@ export class GoogleService {
     return { contacts };
   }
 
-  private async exchangeCode(code: string): Promise<GoogleTokenResponse> {
-    const body = new URLSearchParams({
-      code,
-      client_id: this.getRequiredConfig('GOOGLE_CLIENT_ID'),
-      client_secret: this.getRequiredConfig('GOOGLE_CLIENT_SECRET'),
-      redirect_uri: this.getRedirectUri(),
-      grant_type: 'authorization_code',
-    });
-
-    const response = await fetch('https://oauth2.googleapis.com/token', {
-      method: 'POST',
-      headers: { 'content-type': 'application/x-www-form-urlencoded' },
-      body,
-    });
-
-    if (!response.ok) {
-      throw new BadRequestException(await response.text());
-    }
-
-    return response.json() as Promise<GoogleTokenResponse>;
-  }
-
   private async getGoogleAccountEmail(accessToken: string) {
     const response = await fetch('https://openidconnect.googleapis.com/v1/userinfo', {
       headers: { authorization: `Bearer ${accessToken}` },
@@ -143,33 +121,26 @@ export class GoogleService {
   }
 
   private async refreshAccessToken(refreshToken: string) {
-    const body = new URLSearchParams({
-      refresh_token: refreshToken,
-      client_id: this.getRequiredConfig('GOOGLE_CLIENT_ID'),
-      client_secret: this.getRequiredConfig('GOOGLE_CLIENT_SECRET'),
-      grant_type: 'refresh_token',
-    });
-
-    const response = await fetch('https://oauth2.googleapis.com/token', {
-      method: 'POST',
-      headers: { 'content-type': 'application/x-www-form-urlencoded' },
-      body,
-    });
-
-    if (!response.ok) {
-      throw new BadRequestException(await response.text());
-    }
-
-    const data = (await response.json()) as GoogleTokenResponse;
-    if (!data.access_token) {
+    const oauthClient = this.getOAuthClient();
+    oauthClient.setCredentials({ refresh_token: refreshToken });
+    const accessToken = await oauthClient.getAccessToken();
+    if (!accessToken.token) {
       throw new BadRequestException('Google did not return an access token');
     }
 
-    return data.access_token;
+    return accessToken.token;
   }
 
   private getRedirectUri() {
     return this.config.get<string>('GOOGLE_REDIRECT_URI') ?? 'http://localhost:3000/api/google/callback';
+  }
+
+  private getOAuthClient() {
+    return new OAuth2Client(
+      this.getRequiredConfig('GOOGLE_CLIENT_ID'),
+      this.getRequiredConfig('GOOGLE_CLIENT_SECRET'),
+      this.getRedirectUri(),
+    );
   }
 
   private createSignedState(hostId: string) {

@@ -4,13 +4,13 @@ import { JwtService } from '@nestjs/jwt';
 import { InjectModel } from '@nestjs/mongoose';
 import * as bcrypt from 'bcryptjs';
 import { randomBytes } from 'crypto';
+import { OAuth2Client } from 'google-auth-library';
 import { Model } from 'mongoose';
 import { isOwnerEmail } from '../../admin/helpers';
 import { Admin, AdminAccountStatus, AdminDocument, AdminRole } from '../../admin/schemas';
 import { AppLoggerService } from '../../logs/service';
 import { LogLevel, LogSource } from '../../logs/schemas';
 import { MailService } from '../../mail/service';
-import { GoogleTokenResponse, GoogleUserInfoResponse } from '../../google/types';
 import { ForgotPasswordDto, LoginDto, RegisterDto, ResetPasswordDto } from '../dto';
 import { hashResetToken, isDuplicateMongoKeyError, normalizeEmail } from '../helpers';
 import { toAuthSession } from '../mappers';
@@ -138,10 +138,13 @@ export class AuthService {
   }
 
   createGoogleAuthUrl() {
-    const params = new URLSearchParams({
-      client_id: this.getRequiredConfig('GOOGLE_CLIENT_ID'),
-      redirect_uri: this.getGoogleLoginRedirectUri(),
-      response_type: 'code',
+    const oauthClient = this.getGoogleLoginClient();
+
+    return {
+      authUrl: oauthClient.generateAuthUrl({
+        access_type: 'online',
+        prompt: 'select_account',
+        include_granted_scopes: true,
       scope: ['openid', 'email', 'profile'].join(' '),
       state: this.jwtService.sign(
         {
@@ -150,10 +153,7 @@ export class AuthService {
         } satisfies GoogleLoginState,
         { expiresIn: '10m' },
       ),
-    });
-
-    return {
-      authUrl: `https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`,
+      }),
     };
   }
 
@@ -179,14 +179,9 @@ export class AuthService {
       }
 
       await this.verifyGoogleLoginState(state);
-      const tokenResponse = await this.exchangeGoogleLoginCode(code);
-      if (!tokenResponse.access_token) {
-        throw new BadRequestException('Google did not return an access token');
-      }
-
-      const googleUser = await this.getGoogleUserInfo(tokenResponse.access_token);
+      const googleUser = await this.verifyGoogleLoginCode(code);
       const normalizedEmail = normalizeEmail(googleUser.email ?? '');
-      if (!normalizedEmail || googleUser.email_verified === false) {
+      if (!normalizedEmail || googleUser.email_verified !== true) {
         throw new BadRequestException('Google account email is missing or not verified');
       }
 
@@ -369,38 +364,23 @@ export class AuthService {
     return this.createSession(admin.id, admin.email, admin.role, admin);
   }
 
-  private async exchangeGoogleLoginCode(code: string): Promise<GoogleTokenResponse> {
-    const body = new URLSearchParams({
-      code,
-      client_id: this.getRequiredConfig('GOOGLE_CLIENT_ID'),
-      client_secret: this.getRequiredConfig('GOOGLE_CLIENT_SECRET'),
-      redirect_uri: this.getGoogleLoginRedirectUri(),
-      grant_type: 'authorization_code',
-    });
-
-    const response = await fetch('https://oauth2.googleapis.com/token', {
-      method: 'POST',
-      headers: { 'content-type': 'application/x-www-form-urlencoded' },
-      body,
-    });
-
-    if (!response.ok) {
-      throw new BadRequestException(await response.text());
+  private async verifyGoogleLoginCode(code: string) {
+    const oauthClient = this.getGoogleLoginClient();
+    const { tokens } = await oauthClient.getToken(code);
+    if (!tokens.id_token) {
+      throw new BadRequestException('Google did not return an ID token');
     }
 
-    return response.json() as Promise<GoogleTokenResponse>;
-  }
-
-  private async getGoogleUserInfo(accessToken: string) {
-    const response = await fetch('https://openidconnect.googleapis.com/v1/userinfo', {
-      headers: { authorization: `Bearer ${accessToken}` },
+    const ticket = await oauthClient.verifyIdToken({
+      idToken: tokens.id_token,
+      audience: this.getRequiredConfig('GOOGLE_CLIENT_ID'),
     });
-
-    if (!response.ok) {
-      throw new BadRequestException(await response.text());
+    const payload = ticket.getPayload();
+    if (!payload) {
+      throw new BadRequestException('Google returned an invalid ID token');
     }
 
-    return response.json() as Promise<GoogleUserInfoResponse>;
+    return payload;
   }
 
   private async verifyGoogleLoginState(state: string) {
@@ -418,6 +398,14 @@ export class AuthService {
     return this.config.get<string>('GOOGLE_AUTH_REDIRECT_URI')
       ?? this.config.get<string>('GOOGLE_REDIRECT_URI')
       ?? 'http://localhost:3000/api/auth/google/callback';
+  }
+
+  private getGoogleLoginClient() {
+    return new OAuth2Client(
+      this.getRequiredConfig('GOOGLE_CLIENT_ID'),
+      this.getRequiredConfig('GOOGLE_CLIENT_SECRET'),
+      this.getGoogleLoginRedirectUri(),
+    );
   }
 
   private getRequiredConfig(key: string) {
