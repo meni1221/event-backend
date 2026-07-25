@@ -1,8 +1,10 @@
 import { Body, Controller, Delete, Get, HttpCode, Param, Patch, Post, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { StatusCodes } from 'http-status-codes';
+import { Throttle } from '@nestjs/throttler';
 import { CurrentHost } from '../../../common/decorators/current-host';
 import { JwtAuthGuard } from '../../../common/guards/jwt-auth';
+import { routeRateLimits } from '../../../common/security';
 import { CreateGuestDto } from '../dto/create-guest';
 import { UpdateGuestDto } from '../dto/update-guest';
 import { UpdateRsvpDto } from '../dto/update-rsvp';
@@ -53,6 +55,7 @@ export class GuestsController {
   }
 
   @Get('invite/:eventId/:inviteId')
+  @Throttle(routeRateLimits.invitations.read)
   findPublicInviteByEvent(
     @Param('eventId') eventId: string,
     @Param('inviteId') inviteId: string,
@@ -61,11 +64,13 @@ export class GuestsController {
   }
 
   @Get('invite/:inviteId')
+  @Throttle(routeRateLimits.invitations.read)
   findPublicInvite(@Param('inviteId') inviteId: string) {
     return this.guestsService.findByInviteId(inviteId);
   }
 
   @Patch('invite/:eventId/:inviteId/rsvp')
+  @Throttle(routeRateLimits.invitations.rsvp)
   @HttpCode(StatusCodes.OK)
   updatePublicEventRsvp(
     @Param('eventId') eventId: string,
@@ -76,6 +81,7 @@ export class GuestsController {
   }
 
   @Patch('invite/:inviteId/rsvp')
+  @Throttle(routeRateLimits.invitations.rsvp)
   @HttpCode(StatusCodes.OK)
   updatePublicRsvp(@Param('inviteId') inviteId: string, @Body() dto: UpdateRsvpDto) {
     return this.guestsService.updateRsvp(inviteId, dto);

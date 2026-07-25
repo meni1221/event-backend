@@ -1,8 +1,10 @@
 import { Body, Controller, Get, HttpCode, Post, Query, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { StatusCodes } from 'http-status-codes';
+import { Throttle } from '@nestjs/throttler';
 import { CurrentHost } from '../../../common/decorators/current-host';
 import { JwtAuthGuard } from '../../../common/guards/jwt-auth';
+import { routeRateLimits } from '../../../common/security';
 import { SendWhatsappBatchDto, SendWhatsappTestDto, WhatsappConnectionQueryDto } from '../dto';
 import { WhatsappMessageQueueService } from '../message-queue';
 import { WhatsappClientSnapshot, WhatsappManagerService } from '../manager';
@@ -18,6 +20,7 @@ export class WhatsappController {
   ) {}
 
   @Post('connect')
+  @Throttle(routeRateLimits.whatsapp.connect)
   @HttpCode(StatusCodes.OK)
   async connect(@CurrentHost() host: { hostId: string }, @Query() query: WhatsappConnectionQueryDto) {
     return this.whatsappManager.ensureClient(host.hostId, query.connectionId);
@@ -41,12 +44,14 @@ export class WhatsappController {
   }
 
   @Post('send-batch')
+  @Throttle(routeRateLimits.whatsapp.sendBatch)
   @HttpCode(StatusCodes.ACCEPTED)
   async sendBatch(@CurrentHost() host: { hostId: string }, @Body() dto: SendWhatsappBatchDto) {
     return this.messageQueue.enqueueBatch(host.hostId, dto);
   }
 
   @Post('send-test')
+  @Throttle(routeRateLimits.whatsapp.sendTest)
   @HttpCode(StatusCodes.ACCEPTED)
   async sendTest(@CurrentHost() host: { hostId: string }, @Body() dto: SendWhatsappTestDto) {
     return this.messageQueue.sendTest(host.hostId, dto);
