@@ -1,9 +1,8 @@
-import { Body, Controller, Get, HttpCode, Post, Query, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, Post, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { StatusCodes } from 'http-status-codes';
 import { Throttle } from '@nestjs/throttler';
 import { CurrentHost } from '../../../common/decorators/current-host';
-import { JwtAuthGuard } from '../../../common/guards/jwt-auth';
 import { routeRateLimits } from '../../../common/security';
 import { SendWhatsappBatchDto, SendWhatsappTestDto, WhatsappConnectionQueryDto } from '../dto';
 import { WhatsappMessageQueueService } from '../message-queue';
@@ -12,7 +11,6 @@ import { WhatsappClientSnapshot, WhatsappManagerService } from '../manager';
 @ApiTags('WhatsApp')
 @ApiBearerAuth('access-token')
 @Controller('whatsapp')
-@UseGuards(JwtAuthGuard)
 export class WhatsappController {
   constructor(
     private readonly whatsappManager: WhatsappManagerService,

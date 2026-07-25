@@ -1,8 +1,7 @@
-import { Body, Controller, Delete, ForbiddenException, Get, HttpCode, Param, Patch, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, ForbiddenException, Get, HttpCode, Param, Patch } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { StatusCodes } from 'http-status-codes';
 import { CurrentHost } from '../../../common/decorators/current-host';
-import { JwtAuthGuard } from '../../../common/guards/jwt-auth';
 import { ChangePasswordDto, UpdateAdminOnboardingDto, UpdateAdminProfileDto } from '../dto';
 import { AdminRole } from '../schemas';
 import { AdminService } from '../service';
@@ -10,7 +9,6 @@ import { AdminService } from '../service';
 @ApiTags('Admin')
 @ApiBearerAuth('access-token')
 @Controller('admin')
-@UseGuards(JwtAuthGuard)
 export class AdminController {
   constructor(private readonly adminService: AdminService) {}
 

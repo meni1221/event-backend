@@ -1,6 +1,5 @@
 import { Module } from '@nestjs/common';
 import { MongooseModule } from '@nestjs/mongoose';
-import { JwtAuthGuard } from '../../common/guards/jwt-auth';
 import { Event, EventSchema } from '../events/schemas';
 import { Guest, GuestSchema } from '../guests/schemas';
 import { MailModule } from '../mail';
@@ -18,7 +17,7 @@ import { AdminService } from './service';
     MailModule,
   ],
   controllers: [AdminController],
-  providers: [AdminService, JwtAuthGuard],
+  providers: [AdminService],
   exports: [MongooseModule],
 })
 export class AdminModule {}

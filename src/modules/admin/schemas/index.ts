@@ -78,6 +78,9 @@ export class Admin {
   @Prop({ type: Date, select: false, default: null })
   passwordResetExpiresAt!: Date | null;
 
+  @Prop({ type: Number, select: false, default: 0, min: 0 })
+  sessionVersion!: number;
+
   @Prop({
     type: String,
     enum: Object.values(AdminRole),

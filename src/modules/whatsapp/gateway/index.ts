@@ -1,6 +1,4 @@
 import { Inject, Logger, UnauthorizedException, forwardRef } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
-import { JwtService } from '@nestjs/jwt';
 import {
   ConnectedSocket,
   MessageBody,
@@ -10,8 +8,7 @@ import {
   WebSocketServer,
 } from '@nestjs/websockets';
 import { Server, Socket } from 'socket.io';
-import { getRequiredJwtSecret } from '../../../common/config';
-import { AdminRole } from '../../admin/schemas';
+import { AuthorizedSessionUser, SessionAuthorizationService } from '../../auth/session-authorization';
 import { WhatsappManagerService, WhatsappClientSnapshot } from '../manager';
 import type { QueueSnapshot } from '../message-queue';
 
@@ -20,22 +17,10 @@ const allowedSocketOrigins = (process.env.FRONTEND_ORIGIN ?? '')
   .map((origin) => origin.trim())
   .filter(Boolean);
 
-type WhatsappSocketUser = {
-  email: string;
-  hostId: string;
-  role: AdminRole;
-};
-
 type AuthenticatedWhatsappSocket = Socket & {
   data: Socket['data'] & {
-    user?: WhatsappSocketUser;
+    user?: AuthorizedSessionUser;
   };
-};
-
-type JwtPayload = {
-  email: string;
-  role: AdminRole;
-  sub: string;
 };
 
 @WebSocketGateway({
@@ -59,7 +44,7 @@ export class WhatsappGateway implements OnGatewayConnection {
   server!: Server;
 
   constructor(
-    private readonly config: ConfigService,
+    private readonly sessionAuthorization: SessionAuthorizationService,
     @Inject(forwardRef(() => WhatsappManagerService))
     private readonly whatsappManager: WhatsappManagerService,
   ) {}
@@ -110,21 +95,13 @@ export class WhatsappGateway implements OnGatewayConnection {
     return `host:${hostId}:whatsapp:${connectionId}`;
   }
 
-  private async authenticate(client: Socket): Promise<WhatsappSocketUser> {
+  private async authenticate(client: Socket): Promise<AuthorizedSessionUser> {
     const token = this.getToken(client);
     if (!token) {
       throw new UnauthorizedException('Missing authorization token');
     }
 
-    const jwt = new JwtService({
-      secret: getRequiredJwtSecret(this.config),
-    });
-    const payload = await jwt.verifyAsync<JwtPayload>(token, { algorithms: ['HS256'] });
-    return {
-      email: payload.email,
-      hostId: payload.sub,
-      role: payload.role,
-    };
+    return this.sessionAuthorization.authorize(token);
   }
 
   private getToken(client: Socket) {

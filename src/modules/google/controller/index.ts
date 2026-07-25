@@ -1,8 +1,8 @@
-import { Controller, Get, HttpCode, Post, Query, Redirect, UseGuards } from '@nestjs/common';
+import { Controller, Get, HttpCode, Post, Query, Redirect } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { StatusCodes } from 'http-status-codes';
 import { CurrentHost } from '../../../common/decorators/current-host';
-import { JwtAuthGuard } from '../../../common/guards/jwt-auth';
+import { Public } from '../../../common/decorators/public';
 import { AuthService } from '../../auth/service';
 import { GoogleService } from '../service';
 
@@ -15,21 +15,18 @@ export class GoogleController {
   ) {}
 
   @Get('status')
-  @UseGuards(JwtAuthGuard)
   @ApiBearerAuth('access-token')
   getStatus(@CurrentHost() host: { hostId: string }) {
     return this.googleService.getStatus(host.hostId);
   }
 
   @Get('connect')
-  @UseGuards(JwtAuthGuard)
   @ApiBearerAuth('access-token')
   connect(@CurrentHost() host: { hostId: string }) {
     return this.googleService.createAuthUrl(host.hostId);
   }
 
   @Get('contacts')
-  @UseGuards(JwtAuthGuard)
   @ApiBearerAuth('access-token')
   getContacts(@CurrentHost() host: { hostId: string }) {
     return this.googleService.getContacts(host.hostId);
@@ -37,13 +34,13 @@ export class GoogleController {
 
   @Post('disconnect')
   @HttpCode(StatusCodes.OK)
-  @UseGuards(JwtAuthGuard)
   @ApiBearerAuth('access-token')
   disconnect(@CurrentHost() host: { hostId: string }) {
     return this.googleService.disconnect(host.hostId);
   }
 
   @Get('callback')
+  @Public()
   @Redirect()
   async callback(@Query('code') code?: string, @Query('state') state?: string, @Query('error') error?: string) {
     if (this.authService.isGoogleLoginState(state)) {

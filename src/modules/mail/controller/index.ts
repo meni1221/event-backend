@@ -1,8 +1,7 @@
-import { Body, Controller, HttpCode, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, HttpCode, Post } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { StatusCodes } from 'http-status-codes';
 import { Throttle } from '@nestjs/throttler';
-import { JwtAuthGuard } from '../../../common/guards/jwt-auth';
 import { routeRateLimits } from '../../../common/security';
 import { SendInvitationEmailBatchDto } from '../dto';
 import { MailService } from '../service';
@@ -10,7 +9,6 @@ import { MailService } from '../service';
 @ApiTags('Mail')
 @ApiBearerAuth('access-token')
 @Controller('mail')
-@UseGuards(JwtAuthGuard)
 export class MailController {
   constructor(private readonly mailService: MailService) {}
 
