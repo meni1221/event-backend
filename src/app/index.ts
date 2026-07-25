@@ -3,6 +3,7 @@ import { APP_GUARD } from '@nestjs/core';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { MongooseModule } from '@nestjs/mongoose';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
+import { validateEnvironment } from '../common/config';
 import { getPositiveInteger } from '../common/security';
 import { AdminModule } from '../modules/admin';
 import { AuthModule } from '../modules/auth';
@@ -14,7 +15,7 @@ import { WhatsappModule } from '../modules/whatsapp';
 
 @Module({
   imports: [
-    ConfigModule.forRoot({ isGlobal: true }),
+    ConfigModule.forRoot({ isGlobal: true, validate: validateEnvironment }),
     ThrottlerModule.forRootAsync({
       inject: [ConfigService],
       useFactory: (config: ConfigService) => [
