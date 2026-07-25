@@ -13,6 +13,7 @@ const bootstrap = async () => {
   const isProduction = config.get<string>('NODE_ENV') === 'production';
   const trustProxyHops = getPositiveInteger(config.get<string>('TRUST_PROXY_HOPS'), 0);
 
+  app.enableShutdownHooks();
   app.setGlobalPrefix('api');
   app.use(helmet());
   if (trustProxyHops > 0) {

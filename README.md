@@ -119,6 +119,21 @@ VITE_API_BASE_URL=https://your-backend.example.com/api
 - Tokens issued before session versioning was introduced are intentionally rejected. Users must sign in again after the first deployment of this version.
 - WebSocket connections use the same database-backed session authorization as REST requests.
 
+## Health Checks
+
+The health endpoints are public, return no sensitive configuration, and disable response caching:
+
+```http
+GET /api/health/live
+GET /api/health/ready
+```
+
+- Use `/api/health/live` as the liveness probe. It confirms that the Node.js process can respond.
+- Use `/api/health/ready` as the readiness probe. It returns `200` only when MongoDB is connected and `503` otherwise.
+- Remove an instance from traffic when readiness fails, but restart it only when liveness fails.
+
+Nest shutdown hooks are enabled so deployment platforms can stop the application and close managed resources cleanly.
+
 ## WhatsApp QR API
 
 ```http
