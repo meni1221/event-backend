@@ -2,6 +2,8 @@
 
 NestJS API for the Ishru multi-tenant event platform.
 
+Track launch blockers and the next engineering priorities in [Production Readiness](docs/production-readiness.md).
+
 ## Responsibilities
 
 - Auth and admin approval flow
