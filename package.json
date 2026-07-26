@@ -17,7 +17,8 @@
     "start": "node dist/index.js",
     "start:dev": "nest start --watch",
     "lint": "eslint \"src/**/*.ts\"",
-    "test": "jest"
+    "test": "jest",
+    "db:backup": "node scripts/mongodb-backup.mjs"
   },
   "dependencies": {
     "@nestjs/common": "^11.1.27",
