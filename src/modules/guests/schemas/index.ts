@@ -98,5 +98,5 @@ export const GuestSchema = SchemaFactory.createForClass(Guest);
 
 GuestSchema.index({ eventId: 1, phoneNumber: 1 }, { unique: true });
 GuestSchema.index({ eventId: 1, email: 1 });
-GuestSchema.index({ eventId: 1, inviteId: 1 }, { unique: true });
+GuestSchema.index({ inviteId: 1 }, { unique: true });
 GuestSchema.index({ eventId: 1, status: 1 });
