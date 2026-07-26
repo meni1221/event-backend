@@ -77,6 +77,13 @@ export class GuestsService {
       throw new NotFoundException('Guest was not found');
     }
 
+    await this.eventModel
+      .updateOne(
+        { _id: guest.eventId },
+        { $pull: { 'seatingTables.$[].guestIds': guest._id } },
+      )
+      .exec();
+
     return guest;
   }
 
