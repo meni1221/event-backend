@@ -37,3 +37,26 @@ export const buildBackupArguments = (uri, archivePath) => [
   `--archive=${archivePath}`,
   '--gzip',
 ];
+
+export const parseRestoreOptions = (args) => {
+  const archive = args.find((argument) => argument.startsWith('--archive='))?.slice('--archive='.length).trim();
+  if (!archive) {
+    throw new Error('Provide a backup file with --archive=<path>');
+  }
+
+  const execute = args.includes('--execute');
+  const confirmation = args.find((argument) => argument.startsWith('--confirm='))?.slice('--confirm='.length);
+  if (execute && confirmation !== 'RESTORE') {
+    throw new Error('Executing a restore requires --confirm=RESTORE');
+  }
+
+  return { archive, execute };
+};
+
+export const buildRestoreArguments = (uri, archivePath, execute) => [
+  `--uri=${uri}`,
+  `--archive=${archivePath}`,
+  '--gzip',
+  '--stopOnError',
+  ...(execute ? ['--drop'] : ['--dryRun', '--verbose']),
+];
