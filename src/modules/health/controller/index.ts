@@ -1,6 +1,7 @@
 import { Controller, Get, Header, ServiceUnavailableException } from '@nestjs/common';
 import { InjectConnection } from '@nestjs/mongoose';
 import { Connection } from 'mongoose';
+import { ApiOkResponse, ApiOperation, ApiServiceUnavailableResponse, ApiTags } from '@nestjs/swagger';
 import { Public } from '../../../common/decorators/public';
 
 type HealthResponse = {
@@ -13,17 +14,23 @@ type HealthResponse = {
 };
 
 @Public()
+@ApiTags('Health')
 @Controller('health')
 export class HealthController {
   constructor(@InjectConnection() private readonly connection: Connection) {}
 
   @Get('live')
+  @ApiOperation({ summary: 'Report process liveness' })
+  @ApiOkResponse({ description: 'The backend process is alive.' })
   @Header('Cache-Control', 'no-store')
   getLiveness(): HealthResponse {
     return this.createResponse('alive');
   }
 
   @Get('ready')
+  @ApiOperation({ summary: 'Report readiness including MongoDB connectivity' })
+  @ApiOkResponse({ description: 'The backend is ready to receive traffic.' })
+  @ApiServiceUnavailableResponse({ description: 'A required dependency is unavailable.' })
   @Header('Cache-Control', 'no-store')
   getReadiness(): HealthResponse {
     const mongodb = this.getMongoStatus();

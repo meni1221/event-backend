@@ -1,4 +1,4 @@
-import { ApiProperty } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { IsEmail, IsOptional, IsString, Matches, MinLength } from 'class-validator';
 
 export const strongPasswordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z\d]).{10,}$/;
@@ -44,14 +44,17 @@ export class ResetPasswordDto {
 }
 
 export class GoogleAuthCallbackDto {
+  @ApiPropertyOptional({ description: 'Google authorization code' })
   @IsOptional()
   @IsString()
   code?: string;
 
+  @ApiPropertyOptional({ description: 'Signed OAuth state' })
   @IsOptional()
   @IsString()
   state?: string;
 
+  @ApiPropertyOptional({ description: 'Google OAuth error code' })
   @IsOptional()
   @IsString()
   error?: string;
