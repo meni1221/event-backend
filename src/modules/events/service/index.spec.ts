@@ -1,4 +1,4 @@
-import { NotFoundException } from '@nestjs/common';
+import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { Model, Types } from 'mongoose';
 import type { GuestDocument } from '../../guests/schemas';
 import { UpdateEventDto } from '../dto/update-event';
@@ -31,7 +31,8 @@ describe('EventsService tenant isolation', () => {
     findOneAndUpdate,
   } as unknown as Model<EventDocument>;
   const deleteMany = jest.fn();
-  const guestModel = { deleteMany } as unknown as Model<GuestDocument>;
+  const guestFind = jest.fn();
+  const guestModel = { deleteMany, find: guestFind } as unknown as Model<GuestDocument>;
   const service = new EventsService(eventModel, guestModel);
 
   beforeEach(() => {
@@ -93,5 +94,34 @@ describe('EventsService tenant isolation', () => {
 
     await expect(service.update(hostId, eventId, { eventName: 'Updated event' } as UpdateEventDto))
       .rejects.toBeInstanceOf(NotFoundException);
+  });
+
+  it('rejects duplicate guest assignments before persisting seating', async () => {
+    findOne.mockReturnValue(createSelectQuery({ _id: new Types.ObjectId(eventId) }));
+
+    await expect(service.updateSeating(hostId, eventId, {
+      tables: [
+        { id: 'table_1', name: 'One', zone: 'A', capacity: 10, guestIds: [hostId] },
+        { id: 'table_2', name: 'Two', zone: 'B', capacity: 10, guestIds: [hostId] },
+      ],
+    })).rejects.toBeInstanceOf(BadRequestException);
+
+    expect(guestFind).not.toHaveBeenCalled();
+    expect(findOneAndUpdate).not.toHaveBeenCalled();
+  });
+
+  it('rejects a table whose assigned parties exceed capacity', async () => {
+    const guestId = new Types.ObjectId();
+    findOne.mockReturnValue(createSelectQuery({ _id: new Types.ObjectId(eventId) }));
+    guestFind.mockReturnValue(createSelectQuery([{
+      _id: guestId,
+      rsvpDetails: { adults: 2, children: 1 },
+    }]));
+
+    await expect(service.updateSeating(hostId, eventId, {
+      tables: [{ id: 'table_1', name: 'One', zone: 'A', capacity: 2, guestIds: [guestId.toHexString()] }],
+    })).rejects.toBeInstanceOf(BadRequestException);
+
+    expect(findOneAndUpdate).not.toHaveBeenCalled();
   });
 });
