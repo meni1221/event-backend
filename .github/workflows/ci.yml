@@ -34,6 +34,9 @@ jobs:
       - name: Run tests
         run: npm test -- --runInBand
 
+      - name: Test recovery tools
+        run: npm run test:ops
+
       - name: Run lint
         run: npm run lint
 

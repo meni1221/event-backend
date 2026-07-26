@@ -134,6 +134,33 @@ GET /api/health/ready
 
 Nest shutdown hooks are enabled so deployment platforms can stop the application and close managed resources cleanly.
 
+## MongoDB Backup and Recovery
+
+Install MongoDB Database Tools and make `mongodump` and `mongorestore` available on `PATH`. The commands read `MONGODB_URI` from the environment and never print it.
+
+Create a compressed archive in `backups/` or `MONGODB_BACKUP_DIR`:
+
+```bash
+npm run db:backup
+```
+
+Validate an archive and preview a restore without changing data:
+
+```bash
+npm run db:restore -- --archive=backups/ishru-TIMESTAMP.archive.gz
+```
+
+Execute a confirmed restore that replaces collections contained in the archive:
+
+```bash
+npm run db:restore -- --archive=backups/ishru-TIMESTAMP.archive.gz --execute --confirm=RESTORE
+```
+
+- Store archives outside the application server in encrypted storage with restricted access.
+- Configure retention and scheduled backups in the hosting platform; the application does not delete old archives automatically.
+- Run a dry-run for every selected archive and perform a full restore drill in an isolated database regularly.
+- Use compatible MongoDB source and destination versions during restore.
+
 ## WhatsApp QR API
 
 ```http
