@@ -16,6 +16,24 @@ export enum EventSeatingMode {
   SEPARATE = 'separate',
 }
 
+@Schema({ _id: false })
+export class SeatingTable {
+  @Prop({ required: true, trim: true, maxlength: 64 })
+  id!: string;
+
+  @Prop({ required: true, trim: true, maxlength: 80 })
+  name!: string;
+
+  @Prop({ required: true, trim: true, maxlength: 80 })
+  zone!: string;
+
+  @Prop({ required: true, min: 1, max: 100 })
+  capacity!: number;
+
+  @Prop({ type: [Types.ObjectId], ref: 'Guest', default: [] })
+  guestIds!: Types.ObjectId[];
+}
+
 @Schema({ timestamps: true, collection: 'events' })
 export class Event {
   @Prop({ type: Types.ObjectId, ref: 'Admin', required: true, index: true })
@@ -60,6 +78,9 @@ export class Event {
     index: true,
   })
   seatingMode!: EventSeatingMode;
+
+  @Prop({ type: [SeatingTable], default: [] })
+  seatingTables!: SeatingTable[];
 
   @Prop({ trim: true, default: 'classic' })
   invitationTemplateKey!: string;
