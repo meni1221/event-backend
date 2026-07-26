@@ -19,7 +19,8 @@
     "lint": "eslint \"src/**/*.ts\"",
     "test": "jest",
     "db:backup": "node scripts/mongodb-backup.mjs",
-    "db:restore": "node scripts/mongodb-restore.mjs"
+    "db:restore": "node scripts/mongodb-restore.mjs",
+    "test:ops": "node --test scripts/lib/*.test.mjs"
   },
   "dependencies": {
     "@nestjs/common": "^11.1.27",
