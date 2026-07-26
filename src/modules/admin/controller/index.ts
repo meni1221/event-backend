@@ -59,4 +59,24 @@ export class AdminController {
 
     return this.adminService.approveHost(adminId);
   }
+
+  @Patch(':adminId/suspend')
+  @HttpCode(StatusCodes.OK)
+  suspendHost(@CurrentHost() host: { role?: AdminRole }, @Param('adminId') adminId: string) {
+    if (host.role !== AdminRole.OWNER) {
+      throw new ForbiddenException('Owner access is required');
+    }
+
+    return this.adminService.suspendHost(adminId);
+  }
+
+  @Patch(':adminId/restore')
+  @HttpCode(StatusCodes.OK)
+  restoreHost(@CurrentHost() host: { role?: AdminRole }, @Param('adminId') adminId: string) {
+    if (host.role !== AdminRole.OWNER) {
+      throw new ForbiddenException('Owner access is required');
+    }
+
+    return this.adminService.restoreHost(adminId);
+  }
 }

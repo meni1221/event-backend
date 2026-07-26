@@ -258,4 +258,57 @@ export class AdminService {
     return toApprovedOwnerUser(admin);
   }
 
+  suspendHost(adminId: string) {
+    return this.updateHostAccountStatus(adminId, AdminAccountStatus.SUSPENDED);
+  }
+
+  restoreHost(adminId: string) {
+    return this.updateHostAccountStatus(adminId, AdminAccountStatus.APPROVED);
+  }
+
+  private async updateHostAccountStatus(adminId: string, accountStatus: AdminAccountStatus) {
+    const adminObjectId = toObjectId(adminId, 'admin id');
+    const target = await this.adminModel
+      .findById(adminObjectId)
+      .select('role')
+      .lean<{ role: AdminRole }>()
+      .exec();
+
+    if (!target) {
+      throw new NotFoundException('Admin was not found');
+    }
+    if (target.role === AdminRole.OWNER) {
+      throw new ForbiddenException('Owner accounts cannot be suspended or restored');
+    }
+
+    const admin = await this.adminModel
+      .findByIdAndUpdate(
+        adminObjectId,
+        {
+          $set: { accountStatus },
+          $inc: { sessionVersion: 1 },
+        },
+        { new: true },
+      )
+      .select('email fullName phoneNumber profileCompleted role accountStatus whatsappStatus updatedAt')
+      .lean<AdminOverviewRecord>()
+      .exec();
+
+    if (!admin) {
+      throw new NotFoundException('Admin was not found');
+    }
+
+    const suspended = accountStatus === AdminAccountStatus.SUSPENDED;
+    void this.logger.write({
+      category: suspended ? 'admin.suspended' : 'admin.restored',
+      hostId: String(admin._id),
+      level: suspended ? LogLevel.WARN : LogLevel.INFO,
+      message: suspended ? 'Host admin was suspended by owner' : 'Host admin was restored by owner',
+      source: LogSource.BACKEND,
+      userEmail: admin.email,
+    });
+
+    return toOwnerUser(admin);
+  }
+
 }
