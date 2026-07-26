@@ -22,6 +22,9 @@ This document is the release checklist for daily production use. A code change i
 - [x] CI for backend tests, operational tests, lint, and build.
 - [x] CI for frontend tests, TypeScript, and production build.
 - [x] Frontend authentication accessibility checks and global render recovery.
+- [x] Persisted seating plans with tenant checks, capacity enforcement, and accessible controls.
+- [x] Frontend ESLint checks enforced in CI.
+- [x] Isolated HTTP integration tests for authentication, DTO validation, and tenant ownership.
 - [x] Dependency audits reduced to zero known vulnerabilities as of the date above.
 
 ## Launch Blockers
@@ -44,9 +47,9 @@ These items require production infrastructure or account access and cannot be co
 
 ### P1: Release confidence
 
-- [ ] Add HTTP integration tests with an isolated MongoDB test database.
-- [ ] Test cross-tenant access through real controllers and guards, not only service filters.
-- [ ] Add frontend linting and enforce it in CI.
+- [x] Add HTTP integration tests with an isolated MongoDB test database.
+- [x] Test cross-tenant access through real controllers and guards, not only service filters.
+- [x] Add frontend linting and enforce it in CI.
 - [ ] Add accessibility tests for guest RSVP, event editing, owner tables, and destructive dialogs.
 - [ ] Add idempotency protection for message and email batch submissions.
 
@@ -72,12 +75,14 @@ Run these commands before every production release:
 # backend
 npm audit --audit-level=moderate
 npm test -- --runInBand
+npm run test:integration
 npm run test:ops
 npm run lint
 npm run build
 
 # frontend
 npm audit --audit-level=moderate
+npm run lint
 npm test
 npm run build
 ```
