@@ -1,5 +1,7 @@
 import { GuestSchema } from '.';
 
+jest.mock('nanoid', () => ({ nanoid: () => 'test-invite-id' }));
+
 describe('GuestSchema indexes', () => {
   it('keeps invite ids globally unique for deterministic public links', () => {
     const inviteIndex = GuestSchema.indexes().find(([fields]) => fields.inviteId === 1);
